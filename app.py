@@ -174,6 +174,8 @@ async def solve(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         context.user_data[PREVIOUS_PUZZLE_ID] = puzzle.id
                     user.completed_puzzles.add(puzzle)
                     session.commit()
+                    if puzzle.script:
+                        run_script(str(puzzle.script))
                     response_message = format_successful_response(puzzle)
 
                 elif previous_puzzle_id is not None and (
@@ -193,6 +195,8 @@ async def solve(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         context.user_data.pop(PREVIOUS_PUZZLE_ID)
                     user.completed_puzzles.add(puzzle)
                     session.commit()
+                    if puzzle.script:
+                        run_script(str(puzzle.script))
                     response_message = format_successful_response(puzzle)
 
     await context.bot.send_message(chat_id=update.effective_chat.id, text=response_message)
