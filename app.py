@@ -20,7 +20,7 @@ logging.basicConfig(
     level=logging.INFO
 )
 engine = create_engine(SQLALCHEMY_DATABASE_URI)
-PREVIOUS_PUZZLE_ID = 'current_puzzle_id'
+PREVIOUS_PUZZLE_ID_KEY = 'current_puzzle_id'
 
 
 def run_script(script_name: str):
@@ -142,12 +142,14 @@ def get_team_points_dict(session: Session) -> dict:
             .group_by(Team.team).where(Puzzle.completed_by)
             .where(Puzzle.location == Team.location))
     teams = session.execute(stmt).all()
+    # noinspection PyTypeChecker
     return dict(teams)
 
 
 async def solve(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    previous_puzzle_id = context.user_data.get(PREVIOUS_PUZZLE_ID)
+    previous_puzzle_id = context.user_data.get(PREVIOUS_PUZZLE_ID_KEY)
     guess = update.message.text
+    # By default, assume that the user did not find a puzzle.
     response_message = "Nope! Keep trying!"
 
     def format_successful_response(puzzle: Puzzle) -> str:
@@ -165,39 +167,36 @@ async def solve(update: Update, context: ContextTypes.DEFAULT_TYPE):
             puzzle: Puzzle = session.scalar(
                 select(Puzzle).where(Puzzle.location == location).where(guess == Puzzle.trigger_word))
             if puzzle is not None:
-                if len(puzzle.completed_by) > 0:
-                    response_message = f"Oh looks like this puzzle was already solved by {puzzle.completed_by.pop().username}!"
-                elif previous_puzzle_id is None and puzzle.parent_puzzle_id is None:
-                    # if it's the very first valid interaction
+
+                def respond_with_success(link_in_chain: bool):
                     next_in_chain: Puzzle = get_puzzle_by_parent_id(session, puzzle.id)
                     if next_in_chain is not None:
-                        context.user_data[PREVIOUS_PUZZLE_ID] = puzzle.id
+                        context.user_data[PREVIOUS_PUZZLE_ID_KEY] = puzzle.id
+                    elif link_in_chain:
+                        context.user_data.pop(PREVIOUS_PUZZLE_ID_KEY)
                     user.completed_puzzles.add(puzzle)
                     session.commit()
                     if puzzle.script:
                         run_script(str(puzzle.script))
-                    response_message = format_successful_response(puzzle)
+                    return format_successful_response(puzzle)
 
+                if len(puzzle.completed_by) > 0:
+                    # Puzzle was already solved
+                    response_message = f"Oh looks like this puzzle was already solved by {puzzle.completed_by.pop().username}!"
+                elif previous_puzzle_id is None and puzzle.parent_puzzle_id is None:
+                    # Start of a new puzzle chain
+                    response_message = respond_with_success(False)
                 elif previous_puzzle_id is not None and (
                         puzzle.parent_puzzle_id is None or puzzle.parent_puzzle_id != previous_puzzle_id):
                     previous_puzzle = get_puzzle_by_id(session, previous_puzzle_id)
+                    # The user probably tried to start at a new puzzle while in the middle of a chain.
                     response_message = (f"Nope! Please note you'll have to finish solving this puzzle chain "
                                         f"before starting another one. Here's the previous puzzle'"
                                         f"s trigger and clue: \n{previous_puzzle.trigger_word} --> \n"
                                         f"{previous_puzzle.response}")
                 elif previous_puzzle_id is not None and puzzle.parent_puzzle_id == previous_puzzle_id:
-                    # If it's a link in the chain
-                    # check if there's another link in the chain and remove the previous puzzle id if
-                    next_in_chain: Puzzle = get_puzzle_by_parent_id(session, puzzle.id)
-                    if next_in_chain is not None:
-                        context.user_data[PREVIOUS_PUZZLE_ID] = puzzle.id
-                    else:
-                        context.user_data.pop(PREVIOUS_PUZZLE_ID)
-                    user.completed_puzzles.add(puzzle)
-                    session.commit()
-                    if puzzle.script:
-                        run_script(str(puzzle.script))
-                    response_message = format_successful_response(puzzle)
+                    # Is the middle or end of a puzzle chain.
+                    response_message = respond_with_success(True)
 
     await context.bot.send_message(chat_id=update.effective_chat.id, text=response_message)
 
