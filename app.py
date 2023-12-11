@@ -1,4 +1,5 @@
 import logging
+import random
 from typing import Sequence
 
 from requests import post
@@ -83,7 +84,7 @@ async def assign_teams(update: Update, context: ContextTypes.DEFAULT_TYPE):
             users: Sequence[User] = session.scalars(select(User)).all()
             i = 0
             teams: Sequence[Team] = session.scalars(select(Team)).all()
-
+            random.shuffle(list(users))
             for user in users:
                 user.team = teams[i]
                 i += 1
