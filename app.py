@@ -1,12 +1,12 @@
 import logging
 from typing import Sequence, Dict
-
+from requests import post
 from sqlalchemy.orm import Session
 from telegram import Update, InputTextMessageContent, InlineQueryResultArticle
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, filters, InlineQueryHandler
 from sqlalchemy import create_engine, select, func
 import os
-
+from config import HOMEASSISTANT_TOKEN, HOMEASSISTANT_API_URL, SQLALCHEMY_DATABASE_URI, TELEGRAM_BOT_API_TOKEN
 import config
 from db_models.puzzle import Puzzle
 from db_models.team import Team
@@ -19,10 +19,20 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
-cur_dir = os.path.dirname(__file__)
-db_path = os.path.join(cur_dir, "scavenger_hunt.db")
-engine = create_engine(f"sqlite:///{db_path}")
+engine = create_engine(SQLALCHEMY_DATABASE_URI)
 PREVIOUS_PUZZLE_ID = 'current_puzzle_id'
+
+
+def run_script(script_name: str):
+    url = f"{HOMEASSISTANT_API_URL}services/script/turn_on"
+    headers = {
+        "Authorization": f"Bearer {HOMEASSISTANT_TOKEN}",
+        "content-type": "application/json"
+    }
+    data = {"entity_id": f"script.{script_name}"}
+
+    response = post(url, headers=headers, json=data)
+    return response.text
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -82,6 +92,14 @@ async def assign_teams(update: Update, context: ContextTypes.DEFAULT_TYPE):
             session.commit()
             session.close()
         response_message = "Teams assigned."
+    await context.bot.send_message(chat_id=update.effective_chat.id, text=response_message)
+
+
+async def run_script_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.username != 'joeraver':
+        response_message = "Unauthorized"
+    else:
+        response_message = run_script(context.args[0])
     await context.bot.send_message(chat_id=update.effective_chat.id, text=response_message)
 
 
@@ -181,13 +199,13 @@ async def solve(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 if __name__ == '__main__':
-    token = config.config.get('TELEGRAM_BOT_API_TOKEN')
-    application = ApplicationBuilder().token(token).build()
+    application = ApplicationBuilder().token(TELEGRAM_BOT_API_TOKEN).build()
 
     start_handler = CommandHandler('start', start)
     caps_handler = CommandHandler('caps', caps)
     assign_teams_handler = CommandHandler('assign', assign_teams)
     points_handler = CommandHandler('points', get_points)
+    script_handler = CommandHandler('script', run_script_command)
 
     # echo_handler = MessageHandler(filters.TEXT & (~filters.COMMAND), echo)
     solve_handler = MessageHandler(filters.TEXT & (~filters.COMMAND), solve)
@@ -197,6 +215,7 @@ if __name__ == '__main__':
     application.add_handler(solve_handler)
     application.add_handler(assign_teams_handler)
     application.add_handler(points_handler)
+    application.add_handler(script_handler)
 
     unknown_handler = MessageHandler(filters.COMMAND, unknown)
     application.add_handler(unknown_handler)
