@@ -163,7 +163,7 @@ async def solve(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     previous_puzzle = get_puzzle_by_id(session, previous_puzzle_id)
                     response_message = (f"Nope! Please note you'll have to finish solving this puzzle chain "
                                         f"before starting another one. Here's the previous puzzle'"
-                                        f"s trigger and clue: {previous_puzzle.trigger_word} --> "
+                                        f"s trigger and clue: \n{previous_puzzle.trigger_word} --> \n"
                                         f"{previous_puzzle.response}")
                 elif previous_puzzle_id is not None and puzzle.parent_puzzle_id == previous_puzzle_id:
                     # If it's a link in the chain
