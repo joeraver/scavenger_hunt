@@ -2,7 +2,7 @@
 
 from typing import Set, TYPE_CHECKING
 
-from sqlalchemy import String, Integer, Uuid, ForeignKey, Text
+from sqlalchemy import String, Integer, ForeignKey, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from db_models import Base

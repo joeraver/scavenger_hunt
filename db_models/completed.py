@@ -1,10 +1,9 @@
 # User(first_name='Joseph', id=88166700, is_bot=False, language_code='en', last_name='Raver', username='joeraver')
 from __future__ import annotations
+
 from sqlalchemy import ForeignKey, Table, Column
 
 from db_models import Base
-
-from db_models.user import User
 
 
 def _resolve_puzzle_model():

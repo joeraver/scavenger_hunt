@@ -1,17 +1,17 @@
 import logging
-from typing import Sequence, Dict
+from typing import Sequence
+
 from requests import post
-from sqlalchemy.orm import Session
-from telegram import Update, InputTextMessageContent, InlineQueryResultArticle
-from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, filters, InlineQueryHandler
 from sqlalchemy import create_engine, select, func
-import os
+from sqlalchemy.orm import Session
+from telegram import Update
+from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, filters
+
 from config import HOMEASSISTANT_TOKEN, HOMEASSISTANT_API_URL, SQLALCHEMY_DATABASE_URI, TELEGRAM_BOT_API_TOKEN
-import config
+from db_models import import_models
 from db_models.puzzle import Puzzle
 from db_models.team import Team
 from db_models.user import User
-from db_models import import_models
 
 import_models()
 
