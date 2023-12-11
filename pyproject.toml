@@ -1,0 +1,17 @@
+[build-system]
+requires = [
+    "hatchling",
+    "hatch-requirements-txt"
+]
+build-backend = "hatchling.build"
+
+[project]
+name = "scavenger_hunt"
+version = "0.0.1"
+dynamic = [
+    "dependencies",
+    "optional-dependencies"
+]
+
+[tool.hatch.metadata.hooks.requirements_txt]
+files=["requirements.txt"]
