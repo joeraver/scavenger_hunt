@@ -1,0 +1,30 @@
+id,point_value,trigger_word,response,location,script,parent_puzzle_id
+1,5,tablebloop,"you found a table! respond with ""floop"" now.",First Floor,,
+2,10,chair,and now you found a chair,First Floor,,
+3,2,first,what comes next?,First Floor,,
+4,4,second,and after that?,First Floor,,3
+5,6,third,this is the last one,First Floor,,4
+6,0,table,"As you know, Joe's a big fan of Dungeons and Dragons, the Tabletop Role Playing game, and is currently a Dungeon Master! On which night of the week does his group usually play?",Basement,,
+7,10,monday,Correct! ,Basement,,6
+8,0,flareon,What type of Pokémon move would be supereffective against me? Any of them will do.,Basement,,
+9,10,rock,Correct!,Basement,,8
+10,10,ground,Correct!,Basement,,8
+11,10,water,Correct!,Basement,,8
+12,0,leafeon,What type of Pokémon move would be supereffective against me? Any of them will do.,Basement,,
+13,10,flying,Correct!,Basement,,12
+14,10,poison,Correct!,Basement,,12
+15,10,bug,Correct!,Basement,,12
+16,10,fire,Correct!,Basement,,12
+17,10,ice,Correct!,Basement,,12
+18,0,spaceship,SPACESHIP! -- What year did we go to the moon? I personally get that song from Even Stevens stuck in my head all the time.,Basement,,
+19,10,1969,Correct! Not 1970 but the year soooonerrrr...,Basement,puzzle_moon,18
+20,2,tardis,"Just for knowing what the name of it is, you deserve some points. Doctor Who is the longest running science fiction show of all time, and still going strong! In his adventures, the Doctor uses a very special kind of screwdriver. What kind is it?",Basement,,
+21,10,sonic,"Correct! Fun fact, the sound of the Doctor's time machine, the TARDIS, is actually made by running a key over a piano string.",Basement,puzzle_tardis,20
+22,0,roomba,"OK come on, what did you think would happen with this clue? Anywho, while the Roomba does its thing, iRobot was purchased last year by another company. Which one was it?",Basement,puzzle_roomba_start,
+23,10,amazon,"Correct, because of course they did, because they aren't gigantic enough as is. ANYWAY, 'll send the roomba back to its home for now.",Basement,puzzle_roomba_end,22
+24,0,sofa,What character in the Harry Potter series breifly turns into a sofa to hide from Dumbledore?,Basement,,
+25,10,slughorn,Nice job!,Basement,,24
+26,0,flag,"You True American! Speaking of which, what show has its characters play that game?",Basement,,
+27,10,new girl,Correct! JFK! FDR!,Basement,,26
+28,0,microwave,"Science Nerd question! Microwaves work by creating an electric field that switches from + to - really fast. This makes the water molecules spin around, because they are ______",Basement,,
+29,10,polar,WOW NERDDD,Basement,,28

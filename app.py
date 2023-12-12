@@ -3,7 +3,7 @@ import random
 from typing import Sequence
 
 from requests import post
-from sqlalchemy import create_engine, select, func
+from sqlalchemy import create_engine, select, func, delete, text
 from sqlalchemy.orm import Session
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, filters
@@ -47,6 +47,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         last_name=user_data.last_name,
         username=user_data.username
     )
+    if new_user.username is None:
+        new_user.username = f"{new_user.first_name}_{new_user.last_name}"
 
     with Session(engine) as session:
         existing_user = session.scalar(select(User).where(User.id == new_user.id))
@@ -66,7 +68,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def get_points(update: Update, context: ContextTypes.DEFAULT_TYPE):
     with Session(engine) as session:
         team_points = get_team_points_dict(session)
-        user: User = get_user_by_username(session, update.effective_user.username)
+        user: User = get_user_by_id(session, update.effective_user.id)
         my_team = user.team.team
         my_points = session.scalar(select(func.sum(Puzzle.point_value)).where(Puzzle.completed_by.contains(user)))
         my_team_points = team_points.pop(my_team) if len(team_points) > 0 else 0
@@ -77,10 +79,12 @@ async def get_points(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def assign_teams(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.username != 'joeraver':
+    if update.effective_user.username is None or update.effective_user.username != 'joeraver':
         response_message = "Unauthorized"
     else:
         with Session(engine) as session:
+            # noinspection SqlWithoutWhere
+            session.execute(text("DELETE FROM team_assignment"))
             users: Sequence[User] = session.scalars(select(User)).all()
             i = 0
             teams: Sequence[Team] = session.scalars(select(Team)).all()
@@ -96,8 +100,32 @@ async def assign_teams(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(chat_id=update.effective_chat.id, text=response_message)
 
 
+async def cycle_locations(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.username is None or update.effective_user.username != 'joeraver':
+        response_message = "Unauthorized"
+    else:
+        with Session(engine) as session:
+            teams = list(session.scalars(select(Team)).all())
+            first_team_location = teams[0].location
+            for i in range(len(teams)):
+                j = i + 1
+                if j != len(teams):
+                    teams[i].location = teams[i + 1]
+                else:
+                    teams[i].location = first_team_location
+        response_message = "Teams assigned."
+    await context.bot.send_message(chat_id=update.effective_chat.id, text=response_message)
+
+
+async def my_team(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    with Session(engine) as session:
+        team: Team = get_team_by_userid(session, update.effective_user.id)
+        response_message = f"You're on the {team} team, currently located in the {team.location}"
+    await context.bot.send_message(chat_id=update.effective_chat.id, text=response_message)
+
+
 async def run_script_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.username != 'joeraver':
+    if update.effective_user.username is None or update.effective_user.username != 'joeraver':
         response_message = "Unauthorized"
     else:
         response_message = run_script(context.args[0])
@@ -130,18 +158,30 @@ def get_location_by_username(session: Session, username: str) -> str:
         select(Team.location).join(User.team).where(User.username == username))
 
 
+def get_location_by_userid(session: Session, id: int) -> str:
+    return session.scalar(
+        select(Team.location).join(User.team).where(User.id == id))
+
+
 def get_user_by_username(session: Session, username: str) -> User:
     return session.scalar(select(User).where(User.username == username))
+
+
+def get_user_by_id(session: Session, id: int) -> User:
+    return session.scalar(select(User).where(User.id == id))
 
 
 def get_team_by_username(session: Session, username: str) -> Team:
     return session.scalar(select(User.team).where(User.username == username))
 
 
+def get_team_by_userid(session: Session, id: int) -> Team:
+    return session.scalar(select(User.team).where(User.id == id))
+
+
 def get_team_points_dict(session: Session) -> dict:
     stmt = (select(Team.team, func.sum(Puzzle.point_value))
-            .group_by(Team.team).where(Puzzle.completed_by)
-            .where(Puzzle.location == Team.location))
+            .group_by(Team.team).where(Puzzle.completed_by))
     teams = session.execute(stmt).all()
     # noinspection PyTypeChecker
     return dict(teams)
@@ -149,19 +189,19 @@ def get_team_points_dict(session: Session) -> dict:
 
 async def solve(update: Update, context: ContextTypes.DEFAULT_TYPE):
     previous_puzzle_id = context.user_data.get(PREVIOUS_PUZZLE_ID_KEY)
-    guess = update.message.text
+    guess = update.message.text.strip().lower()
     # By default, assume that the user did not find a puzzle.
     response_message = "Nope! Keep trying!"
 
-    def format_successful_response(puzzle: Puzzle) -> str:
-        r = puzzle.response
-        if puzzle.point_value > 0:
-            r = f"Nice job! You received {puzzle.point_value} points for your team!\n{r}"
+    def format_successful_response(pzl: Puzzle) -> str:
+        r = pzl.response
+        if pzl.point_value > 0:
+            r = f"Nice job! You received {pzl.point_value} points for your team!\n{r}"
         return r
 
     with Session(engine) as session:
-        location = get_location_by_username(session, update.effective_user.username)
-        user = get_user_by_username(session, update.effective_user.username)
+        location = get_location_by_userid(session, update.effective_user.id)
+        user = get_user_by_id(session, update.effective_user.id)
         if location is None:
             response_message = "oh, looks like you aren't on a team yet!"
         else:
@@ -183,7 +223,15 @@ async def solve(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
                 if len(puzzle.completed_by) > 0:
                     # Puzzle was already solved
-                    response_message = f"Oh looks like this puzzle was already solved by {puzzle.completed_by.pop().username}!"
+                    current_solver: User = puzzle.completed_by.pop()
+                    response_message = f"Oh looks like this puzzle was already found or is being worked on by {current_solver.first_name} {current_solver.last_name}! Try something else"
+                    if previous_puzzle_id:
+                        previous_puzzle = get_puzzle_by_id(session, previous_puzzle_id)
+                        response_message = response_message + f"\n Here's the info for the puzzle you're currently on: \n{previous_puzzle.response}"
+                    #
+                    # if current_solver.id == update.effective_user.id:
+                    #     response_message = response_message + f"\n And since you are them, here's the info about that puzzle: \n{puzzle.response}"
+
                 elif previous_puzzle_id is None and puzzle.parent_puzzle_id is None:
                     # Start of a new puzzle chain
                     response_message = respond_with_success(False)
@@ -210,6 +258,7 @@ if __name__ == '__main__':
     assign_teams_handler = CommandHandler('assign', assign_teams)
     points_handler = CommandHandler('points', get_points)
     script_handler = CommandHandler('script', run_script_command)
+    cycle_handler = CommandHandler('cycle', cycle_locations)
 
     # echo_handler = MessageHandler(filters.TEXT & (~filters.COMMAND), echo)
     solve_handler = MessageHandler(filters.TEXT & (~filters.COMMAND), solve)
@@ -220,6 +269,7 @@ if __name__ == '__main__':
     application.add_handler(assign_teams_handler)
     application.add_handler(points_handler)
     application.add_handler(script_handler)
+    application.add_handler(cycle_handler)
 
     unknown_handler = MessageHandler(filters.COMMAND, unknown)
     application.add_handler(unknown_handler)
