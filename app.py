@@ -110,10 +110,15 @@ async def cycle_locations(update: Update, context: ContextTypes.DEFAULT_TYPE):
             for i in range(len(teams)):
                 j = i + 1
                 if j != len(teams):
-                    teams[i].location = teams[i + 1]
+                    teams[i].location = teams[j].location
                 else:
                     teams[i].location = first_team_location
-        response_message = "Teams assigned."
+            teams_string = ""
+            session.commit()
+            for team in teams:
+                session.refresh(team)
+                teams_string += f"\nThe {team.team} team is now in the {team.location}."
+        response_message = f"Teams cycled.{teams_string}"
     await context.bot.send_message(chat_id=update.effective_chat.id, text=response_message)
 
 
@@ -181,7 +186,7 @@ def get_team_by_userid(session: Session, id: int) -> Team:
 
 def get_team_points_dict(session: Session) -> dict:
     stmt = (select(Team.team, func.sum(Puzzle.point_value))
-            .group_by(Team.team).where(Puzzle.completed_by))
+            .group_by(Team.team).where(Puzzle.completed_by).where(Puzzle.location == Team.location))
     teams = session.execute(stmt).all()
     # noinspection PyTypeChecker
     return dict(teams)
@@ -250,6 +255,19 @@ async def solve(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(chat_id=update.effective_chat.id, text=response_message)
 
 
+FUNNY_COMMAND_RESPONSES = {
+    'penis': 'BIG black dick',
+    'gay': 'Sorry but homosexual signups are in June.',
+    'whore': "OK but now say it like Frank from It's Always Sunny in Philadelphia."
+}
+FUNNY_COMMANDS = FUNNY_COMMAND_RESPONSES.keys()
+
+
+async def funny(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    funny_word = update.message.text[1:]
+    await context.bot.send_message(chat_id=update.effective_chat.id, text=FUNNY_COMMAND_RESPONSES.get(funny_word))
+
+
 if __name__ == '__main__':
     application = ApplicationBuilder().token(TELEGRAM_BOT_API_TOKEN).build()
 
@@ -259,6 +277,7 @@ if __name__ == '__main__':
     points_handler = CommandHandler('points', get_points)
     script_handler = CommandHandler('script', run_script_command)
     cycle_handler = CommandHandler('cycle', cycle_locations)
+    funny_handler = CommandHandler(FUNNY_COMMANDS, funny)
 
     # echo_handler = MessageHandler(filters.TEXT & (~filters.COMMAND), echo)
     solve_handler = MessageHandler(filters.TEXT & (~filters.COMMAND), solve)
@@ -270,6 +289,7 @@ if __name__ == '__main__':
     application.add_handler(points_handler)
     application.add_handler(script_handler)
     application.add_handler(cycle_handler)
+    application.add_handler(funny_handler)
 
     unknown_handler = MessageHandler(filters.COMMAND, unknown)
     application.add_handler(unknown_handler)

@@ -41,7 +41,7 @@ with Session(engine) as session:
     session.add_all([red_team, blue_team])
 
     puzzle_sql_file = os.path.join(cur_dir, "puzzle.sql")
-    #run_sql_file(session, puzzle_sql_file)
+    run_sql_file(session, puzzle_sql_file)
 
     session.commit()
     session.close()
