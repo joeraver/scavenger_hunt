@@ -28,7 +28,7 @@ def run_sql_file(session: Session, sql_file_path):
 
 with Session(engine) as session:
     red_team = Team(team="Red", location="Basement")
-    blue_team = Team(team="Blue", location="First Floor")
+    blue_team = Team(team="Blue", location="First_Floor")
 
     # test_user = User(
     #     first_name="John",
@@ -40,7 +40,7 @@ with Session(engine) as session:
     # )
     session.add_all([red_team, blue_team])
 
-    puzzle_sql_file = os.path.join(cur_dir, "puzzle.sql")
+    puzzle_sql_file = os.path.join(cur_dir, "puzzle_bak.sql")
     run_sql_file(session, puzzle_sql_file)
 
     session.commit()

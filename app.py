@@ -228,7 +228,7 @@ async def solve(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     def format_successful_response(pzl: Puzzle) -> str:
         r = pzl.response
-        if pzl.point_value > 0:
+        if pzl.point_value and pzl.point_value > 0:
             r = f"Nice job! You received {pzl.point_value} points for your team!\n{r}"
         return r
 
