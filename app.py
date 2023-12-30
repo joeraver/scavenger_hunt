@@ -24,20 +24,34 @@ engine = create_engine(SQLALCHEMY_DATABASE_URI)
 PREVIOUS_PUZZLE_ID_KEY = 'current_puzzle_id'
 
 
-def do_a_print(file_name: str):
-    os.startfile(f"C:\\Users\\joera\\Development\\scavenger_hunt\\{file_name}.pdf", "print")
+def do_a_print(file_name: str, user=None):
+    abs_file_path = f"C:\\Users\\joera\\Development\\scavenger_hunt\\clue.txt"
+    new_file_path = f"C:\\Users\\joera\\Development\\scavenger_hunt\\modded.txt"
+
+    if user is not None:
+        full_name = f"{user.first_name} {user.last_name}"
+        with open(abs_file_path, 'r') as f:
+
+            data = f.read()
+            data = data.replace("friend", full_name)
+
+        with open(new_file_path, 'w') as f:
+            f.write(data)
+            f.close()
+
+    os.startfile(new_file_path, "print")
 
 
-def run_script(location: str, script_name: str):
+def run_script(location: str, script_name: str, user=None):
     if script_name.startswith("print_"):
-        do_a_print(script_name.strip("print_"))
+        do_a_print(script_name.strip("print_"), user)
     else:
         url = f"{HOMEASSISTANT_API_URL}services/script/turn_on"
         headers = {
             "Authorization": f"Bearer {HOMEASSISTANT_TOKEN}",
             "content-type": "application/json"
         }
-        script_location = "puzzle_first_floor" if location == "First Flscoor" else "puzzle_basement"
+        script_location = "puzzle_first_floor" if location == "First_Floor" else "puzzle_basement"
         data = {
             "entity_id": f"script.{script_location}",
             "variables": {
@@ -237,7 +251,7 @@ async def solve(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     user.completed_puzzles.add(puzzle)
                     session.commit()
                     if puzzle.script:
-                        run_script(puzzle.location, str(puzzle.script))
+                        run_script(puzzle.location, str(puzzle.script), user)
                     return format_successful_response(puzzle)
 
                 if len(puzzle.completed_by) > 0:

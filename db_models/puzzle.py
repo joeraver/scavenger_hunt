@@ -21,7 +21,7 @@ class Puzzle(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     point_value: Mapped[int] = mapped_column(Integer, nullable=True)
-    trigger_word: Mapped[str] = mapped_column(String, unique=True)
+    trigger_word: Mapped[str] = mapped_column(String)
     response: Mapped[str] = mapped_column(Text)
     location: Mapped[str] = mapped_column(String)
     script: Mapped[str] = mapped_column(String, nullable=True)
