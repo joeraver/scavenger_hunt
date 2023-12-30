@@ -1,8 +1,8 @@
 import logging
 import random
 from typing import Sequence
-
-from requests import post
+import os
+from requests import post, get
 from sqlalchemy import create_engine, select, func, delete, text
 from sqlalchemy.orm import Session
 from telegram import Update
@@ -24,16 +24,29 @@ engine = create_engine(SQLALCHEMY_DATABASE_URI)
 PREVIOUS_PUZZLE_ID_KEY = 'current_puzzle_id'
 
 
-def run_script(script_name: str):
-    url = f"{HOMEASSISTANT_API_URL}services/script/turn_on"
-    headers = {
-        "Authorization": f"Bearer {HOMEASSISTANT_TOKEN}",
-        "content-type": "application/json"
-    }
-    data = {"entity_id": f"script.{script_name}"}
+def do_a_print(file_name: str):
+    os.startfile(f"C:\\Users\\joera\\Development\\scavenger_hunt\\{file_name}.pdf", "print")
 
-    response = post(url, headers=headers, json=data)
-    return response.text
+
+def run_script(location: str, script_name: str):
+    if script_name.startswith("print_"):
+        do_a_print(script_name.strip("print_"))
+    else:
+        url = f"{HOMEASSISTANT_API_URL}services/script/turn_on"
+        headers = {
+            "Authorization": f"Bearer {HOMEASSISTANT_TOKEN}",
+            "content-type": "application/json"
+        }
+        script_location = "puzzle_first_floor" if location == "First Flscoor" else "puzzle_basement"
+        data = {
+            "entity_id": f"script.{script_location}",
+            "variables": {
+                "script_name": script_name
+            }
+        }
+
+        response = post(url, headers=headers, json=data)
+        return response.text
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -125,7 +138,7 @@ async def cycle_locations(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def my_team(update: Update, context: ContextTypes.DEFAULT_TYPE):
     with Session(engine) as session:
         team: Team = get_team_by_userid(session, update.effective_user.id)
-        response_message = f"You're on the {team} team, currently located in the {team.location}"
+        response_message = f"You're on the {team.team} team, currently located in the {team.location}"
     await context.bot.send_message(chat_id=update.effective_chat.id, text=response_message)
 
 
@@ -133,7 +146,7 @@ async def run_script_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if update.effective_user.username is None or update.effective_user.username != 'joeraver':
         response_message = "Unauthorized"
     else:
-        response_message = run_script(context.args[0])
+        response_message = run_script(context.args[0], context.args[1])
     await context.bot.send_message(chat_id=update.effective_chat.id, text=response_message)
 
 
@@ -181,7 +194,8 @@ def get_team_by_username(session: Session, username: str) -> Team:
 
 
 def get_team_by_userid(session: Session, id: int) -> Team:
-    return session.scalar(select(User.team).where(User.id == id))
+    user = session.scalar(select(User).where(User.id == id))
+    return user.team
 
 
 def get_team_points_dict(session: Session) -> dict:
@@ -223,7 +237,7 @@ async def solve(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     user.completed_puzzles.add(puzzle)
                     session.commit()
                     if puzzle.script:
-                        run_script(str(puzzle.script))
+                        run_script(puzzle.location, str(puzzle.script))
                     return format_successful_response(puzzle)
 
                 if len(puzzle.completed_by) > 0:
@@ -277,6 +291,7 @@ if __name__ == '__main__':
     points_handler = CommandHandler('points', get_points)
     script_handler = CommandHandler('script', run_script_command)
     cycle_handler = CommandHandler('cycle', cycle_locations)
+    my_team_handler = CommandHandler(['team', 'teams', 'my_team', 'myteam'], my_team)
     funny_handler = CommandHandler(FUNNY_COMMANDS, funny)
 
     # echo_handler = MessageHandler(filters.TEXT & (~filters.COMMAND), echo)
@@ -289,6 +304,7 @@ if __name__ == '__main__':
     application.add_handler(points_handler)
     application.add_handler(script_handler)
     application.add_handler(cycle_handler)
+    application.add_handler(my_team_handler)
     application.add_handler(funny_handler)
 
     unknown_handler = MessageHandler(filters.COMMAND, unknown)
