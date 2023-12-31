@@ -16,6 +16,7 @@ def _resolve_user_model():
     return User
 
 
+
 completed = Table(
     "completed",
     Base.metadata,

@@ -7,6 +7,7 @@ from sqlalchemy import create_engine, select, func, delete, text
 from sqlalchemy.orm import Session
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, filters
+from collections import defaultdict
 
 from config import HOMEASSISTANT_TOKEN, HOMEASSISTANT_API_URL, SQLALCHEMY_DATABASE_URI, TELEGRAM_BOT_API_TOKEN
 from db_models import import_models
@@ -31,7 +32,6 @@ def do_a_print(file_name: str, user=None):
     if user is not None:
         full_name = f"{user.first_name} {user.last_name}"
         with open(abs_file_path, 'r') as f:
-
             data = f.read()
             data = data.replace("friend", full_name)
 
@@ -40,6 +40,13 @@ def do_a_print(file_name: str, user=None):
             f.close()
 
     os.startfile(new_file_path, "print")
+
+
+def check_if_running(location: str) -> dict:
+    script_location = "puzzle_first_floor" if location == "First_Floor" else "puzzle_basement"
+    url = f"{HOMEASSISTANT_API_URL}states/script.{script_location}"
+    response = get(url, headers={"Authorization": f"Bearer {HOMEASSISTANT_TOKEN}"})
+    return dict(response.json())
 
 
 def run_script(location: str, script_name: str, user=None):
@@ -94,15 +101,30 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def get_points(update: Update, context: ContextTypes.DEFAULT_TYPE):
     with Session(engine) as session:
-        team_points = get_team_points_dict(session)
-        user: User = get_user_by_id(session, update.effective_user.id)
-        my_team = user.team.team
+        user = get_user_by_id(session, update.effective_user.id)
+        my_team = user.team
         my_points = session.scalar(select(func.sum(Puzzle.point_value)).where(Puzzle.completed_by.contains(user)))
-        my_team_points = team_points.pop(my_team) if len(team_points) > 0 else 0
-        response_message = f"Your team, the {my_team} team, currently has {my_team_points} points, of which you contributed {my_points} points."
+        teammates: list[User] = session.scalars(select(User).where(User.team == my_team)).all()
+        team_points = defaultdict(int)
+        for teammate in teammates:
+            cur_team = teammate.team.team
+            team_points[cur_team] += sum(puzzle.point_value or 0 for puzzle in teammate.completed_puzzles)
+        my_team_points = team_points.pop(my_team.team)
+        response_message = f"Your team, the {my_team.team} team, currently has {my_team_points} points, of which you contributed {my_points} points."
         for team, points in team_points.items():
             response_message += f"\n Meanwhile, the {team} team has {points} points."
         await context.bot.send_message(chat_id=update.effective_chat.id, text=response_message)
+    # with Session(engine) as session:
+    #     team_points = get_team_points_dict(session)
+    #     user: User = get_user_by_id(session, update.effective_user.id)
+    #     my_team = user.team.team
+    #     my_points = session.scalar(select(func.sum(Puzzle.point_value)).where(Puzzle.completed_by.contains(user)))
+    #     my_team_points = team_points.pop(my_team) if len(team_points) > 0 else 0
+    #     response_message = f"Your team, the {my_team} team, currently has {my_team_points} points, of which you contributed {my_points} points."
+    #     for team, points in team_points.items():
+    #         response_message += f"\n Meanwhile, the {team} team has {points} points."
+    #     await context.bot.send_message(chat_id=update.effective_chat.id, text=response_message)
+
 
 
 async def assign_teams(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -153,6 +175,14 @@ async def my_team(update: Update, context: ContextTypes.DEFAULT_TYPE):
     with Session(engine) as session:
         team: Team = get_team_by_userid(session, update.effective_user.id)
         response_message = f"You're on the {team.team} team, currently located in the {team.location}"
+    await context.bot.send_message(chat_id=update.effective_chat.id, text=response_message)
+
+
+async def running(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.username is None or update.effective_user.username != 'joeraver':
+        response_message = "Unauthorized"
+    else:
+        response_message = check_if_running(context.args[0])
     await context.bot.send_message(chat_id=update.effective_chat.id, text=response_message)
 
 
@@ -214,10 +244,17 @@ def get_team_by_userid(session: Session, id: int) -> Team:
 
 def get_team_points_dict(session: Session) -> dict:
     stmt = (select(Team.team, func.sum(Puzzle.point_value))
-            .group_by(Team.team).where(Puzzle.completed_by).where(Puzzle.location == Team.location))
+            .group_by(Team.team).where(Puzzle.completed_by))
     teams = session.execute(stmt).all()
     # noinspection PyTypeChecker
     return dict(teams)
+
+
+def filter_out_other_team(team: str, completed: list[User]) -> list:
+    def same_team(user):
+        return user.team == team
+
+    return list(filter(same_team, completed))
 
 
 async def solve(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -234,7 +271,7 @@ async def solve(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     with Session(engine) as session:
         location = get_location_by_userid(session, update.effective_user.id)
-        user = get_user_by_id(session, update.effective_user.id)
+        user: User = get_user_by_id(session, update.effective_user.id)
         if location is None:
             response_message = "oh, looks like you aren't on a team yet!"
         else:
@@ -244,19 +281,27 @@ async def solve(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
                 def respond_with_success(link_in_chain: bool):
                     next_in_chain: Puzzle = get_puzzle_by_parent_id(session, puzzle.id)
+                    if puzzle.script and puzzle.script != "puzzle_stop_media":
+                        script = check_if_running(puzzle.location)
+                        if script['state'] == 'off':
+                            run_script(puzzle.location, str(puzzle.script), user)
+                        else:
+                            return ("You got the answer to this right, but you'll have to wait for something in "
+                                    "the area to finish before solving. Ask if anyone's working on a special puzzle "
+                                    "and try sending the same message again after they're done.")
                     if next_in_chain is not None:
                         context.user_data[PREVIOUS_PUZZLE_ID_KEY] = puzzle.id
                     elif link_in_chain:
                         context.user_data.pop(PREVIOUS_PUZZLE_ID_KEY)
                     user.completed_puzzles.add(puzzle)
                     session.commit()
-                    if puzzle.script:
-                        run_script(puzzle.location, str(puzzle.script), user)
+
                     return format_successful_response(puzzle)
 
-                if len(puzzle.completed_by) > 0:
+                completed_by_teammates = filter_out_other_team(user.team.team, puzzle.completed_by)
+                if len(completed_by_teammates) > 0:
                     # Puzzle was already solved
-                    current_solver: User = puzzle.completed_by.pop()
+                    current_solver: User = completed_by_teammates.pop()
                     response_message = f"Oh looks like this puzzle was already found or is being worked on by {current_solver.first_name} {current_solver.last_name}! Try something else"
                     if previous_puzzle_id:
                         previous_puzzle = get_puzzle_by_id(session, previous_puzzle_id)
@@ -306,6 +351,7 @@ if __name__ == '__main__':
     script_handler = CommandHandler('script', run_script_command)
     cycle_handler = CommandHandler('cycle', cycle_locations)
     my_team_handler = CommandHandler(['team', 'teams', 'my_team', 'myteam'], my_team)
+    running_handler = CommandHandler('running', running)
     funny_handler = CommandHandler(FUNNY_COMMANDS, funny)
 
     # echo_handler = MessageHandler(filters.TEXT & (~filters.COMMAND), echo)
@@ -319,6 +365,7 @@ if __name__ == '__main__':
     application.add_handler(script_handler)
     application.add_handler(cycle_handler)
     application.add_handler(my_team_handler)
+    application.add_handler(running_handler)
     application.add_handler(funny_handler)
 
     unknown_handler = MessageHandler(filters.COMMAND, unknown)
